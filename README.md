@@ -1,208 +1,214 @@
-# ReviewAI – AI-Powered Multi-Language Code Review Assistant
+# Personal AI Knowledge Assistant
 
-[![ReviewAI License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%2B%20TypeScript%20%2B%20Vite%20%2B%20Tailwind-purple.svg)](frontend/)
-[![Backend](https://img.shields.io/badge/Backend-FastAPI%20%2B%20Python%203.12%20%2B%20Uvicorn-009688.svg)](backend/)
-[![Editor](https://img.shields.io/badge/Editor-Monaco%20Editor-007ACC.svg)](https://microsoft.github.io/monaco-editor/)
-[![Docs](https://img.shields.io/badge/Specification-PDF%20v1.0-red.svg)](docs/ReviewAI_Technical_Documentation.pdf)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Frontend: React + TS + Vite + Tailwind](https://img.shields.io/badge/Frontend-React%2018%20%7C%20TypeScript%20%7C%20Vite%20%7C%20Tailwind-purple.svg)](frontend/)
+[![Backend: FastAPI + Python](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.12-009688.svg)](backend/)
+[![Database: Supabase + PostgreSQL](https://img.shields.io/badge/Database-Supabase%20%7C%20PostgreSQL%20%7C%20pgvector-3ECF8E.svg)](supabase_schema.sql)
+[![Testing: Vitest (27/27 Passed)](https://img.shields.io/badge/Tests-27%2F27%20Passed-brightgreen.svg)](frontend/src/test/)
 
-ReviewAI is an enterprise-grade, developer-focused code review platform that combines large-language-model reasoning, deterministic static analysis, and GitHub pull-request workflows to produce explainable, actionable code reviews before merging or releasing.
+The **Personal AI Knowledge Assistant** is a document-centric AI application that enables individuals to upload, organize, and query their private knowledge bases using state-of-the-art Retrieval-Augmented Generation (RAG). Users can upload documents (PDF, DOCX, TXT), search their knowledge base semantically, and generate grounded answers, summaries, and study quizzes powered by Google Gemini and Supabase PostgreSQL with `pgvector`.
 
-📄 **Full Technical Architecture Specification**: Available in [`docs/ReviewAI_Technical_Documentation.pdf`](docs/ReviewAI_Technical_Documentation.pdf).
+📄 **Full Technical Specification**: [`docs/Personal_AI_Knowledge_Assistant_Technical_Documentation.md`](docs/Personal_AI_Knowledge_Assistant_Technical_Documentation.md)
 
 ---
 
 ## 📑 Table of Contents
 
-- [Executive Summary](#-executive-summary)
-- [Key Objectives & Value Proposition](#-key-objectives--value-proposition)
+- [Key Features](#-key-features)
 - [System Architecture](#-system-architecture)
-- [Review Workflow](#-review-workflow)
-- [Hybrid Analysis Strategy](#-hybrid-analysis-strategy)
-- [Severity & Findings Scoring Model](#-severity--findings-scoring-model)
-- [Technology Stack](#-technology-stack)
-- [API Design](#-api-design)
-- [Data Model](#-data-model)
-- [Security, Privacy & Prompt-Injection Defense](#-security-privacy--prompt-injection-defense)
-- [Development Roadmap & Milestones](#-development-roadmap--milestones)
-- [Getting Started Locally](#-getting-started-locally)
+- [Tech Stack](#-tech-stack)
+- [Supabase Setup & Database Schema](#-supabase-setup--database-schema)
+- [Environment Configuration](#-environment-configuration)
+- [Local Development Guide](#-local-development-guide)
+- [Automated Testing Suite](#-automated-testing-suite)
+- [Implementation Roadmap](#-implementation-roadmap)
+- [Security & Privacy](#-security--privacy)
 
 ---
 
-## 🎯 Executive Summary
+## ✨ Key Features
 
-Manual code review is valuable but can be slow, inconsistent, and difficult for teams. Existing linters detect known rule violations but lack contextual explanations, while general-purpose LLMs can reason about code but may hallucinate defects or line numbers.
+- **🔐 Robust Supabase Authentication**:
+  - Email and password registration and login.
+  - Interactive password visibility toggles.
+  - Comprehensive field validation with meaningful error notifications.
+  - Session persistence via `localStorage` across page reloads.
+  - Protected routes redirecting unauthenticated visitors to `/login`.
+  - Header and sidebar user profile management with instant sign-out.
 
-**ReviewAI solves this through a hybrid architecture:**
-1. **Deterministic Static Analysis**: Runs language-specific tools (Ruff, Bandit, Semgrep, ESLint) for repeatable rule enforcement.
-2. **Contextual LLM Reasoning**: Uses Google Gemini to assess surrounding logic, edge cases, error-handling defects, and intent.
-3. **Structured Validation**: Findings are strictly validated against file paths, line ranges, and concrete evidence before display.
-4. **Developer Approval**: Generates minimal, localized patches that developers review and approve before application.
+- **📊 Modern AI SaaS Dashboard**:
+  - Live metric overviews: Total documents uploaded, aggregate storage usage, and active security status.
+  - Embedded quick uploader with drag-and-drop support.
+  - Recently uploaded documents table with direct download and deletion capabilities.
+  - 5-section sidebar navigation: **Dashboard**, **My Documents**, **AI Assistant**, **Search**, and **Settings**.
+
+- **📁 Knowledge Document Management**:
+  - Support for **PDF**, **DOCX**, and **TXT** files (up to 25 MB per file).
+  - Drag-and-drop or local file selection.
+  - Private file storage in isolated Supabase Storage buckets.
+  - Complete document metadata tracking (UUID, user ownership, file type, file size, storage path, status, timestamps).
+  - Temporary signed URLs for secure on-demand downloads.
+  - Confirmation modals for safe, permanent deletions.
+
+- **🛡️ Row Level Security (RLS)**:
+  - Strict database policies ensure users can only view, insert, update, or delete their own document metadata (`auth.uid() = user_id`).
+  - Storage bucket isolation restricts access to `${user.id}/*` prefixes.
 
 ---
 
 ## 🏛 System Architecture
 
-The backend is the trust boundary. The frontend never receives model provider secrets or executes arbitrary analysis commands.
+The architecture separates the presentation layer, application backend, RAG engine, model provider, database, and storage:
 
+```text
+                               +-------------------------------------+
+                               |           AI / RAG ENGINE           |<=====>[ GEMINI API ]
+                               |   (Retrieval + Prompt Generation)   |       (LLM + Embeddings)
+                               +-------------------------------------+
+                                        ^                |
+                       Question + Context|                | top-k chunks
+                                        |                v
+[ USER ] ==========> [ PRESENTATION ] ===> [ APPLICATION ] ========> [ DATA LAYER ]
+(Web / Mobile Browser) (React + Tailwind)  (FastAPI Backend)        (Supabase + pgvector)
+                                                 |                          ^
+                                                 | (file access/storage)     |
+                                                 v                          |
+                                       [ FILE STORAGE ] --------------------+
+                                    (Supabase Private Storage)
 ```
-+-----------------------------------------------------------------------------------+
-|                           Developer / GitHub Webhook                              |
-|                   (Code Paste / File Upload / Repository / PR)                    |
-+-----------------------------------------------------------------------------------+
-                                          |
-                                          v
-+-----------------------------------------------------------------------------------+
-|                            ReviewAI API (FastAPI)                                 |
-|                  Authentication • Validation • Review Orchestration               |
-+-----------------------------------------------------------------------------------+
-        |                                 |                                 |
-        v                                 v                                 v
-+------------------+             +------------------+             +-----------------+
-|  Pre-processing  |             | Static Analysis  |             | Gemini Analysis |
-| Language Detect  |             | Linters • SAST   |             | Logic • Context |
-| Diff/File Parsing|             | Rule-based Rules |             | Fix Suggestions |
-+------------------+             +------------------+             +-----------------+
-        \                                 |                                 /
-         \                                v                                /
-          +---------------------------------------------------------------+
-          |               Finding Validation & Report Builder             |
-          |       Deduplicate • Validate Line Numbers • Severity • Evidence|
-          +---------------------------------------------------------------+
-                                          |
-                                          v
-                     +-----------------------------------------+
-                     | Supabase Persistence / GitHub PR Review |
-                     +-----------------------------------------+
-```
-
-### Architecture Components
-
-| Component | Responsibility |
-| :--- | :--- |
-| **React Frontend** | Code intake, Monaco editor, review dashboard, finding details, diff viewer, and history. |
-| **FastAPI Backend** | Authentication checks, request validation, review orchestration, persistence, and provider integration. |
-| **Preprocessor** | Language detection, file normalization, diff parsing, and size limit enforcement. |
-| **Static Analyzers** | Invokes Ruff, Bandit, Semgrep, and ESLint in sandboxed workers. |
-| **Gemini Service** | Analyzes contextual code logic and returns structured, schema-constrained findings. |
-| **Finding Validator**| Checks schema, paths, line ranges, evidence integrity, and deduplicates findings. |
-| **Database (Supabase)** | Stores user identities, review metadata, audit trails, and finding records. |
 
 ---
 
-## 🔄 Review Workflow
+## 🛠 Tech Stack
 
-1. **Submit**: Developer pastes code, uploads source files, or triggers via GitHub Pull Request.
-2. **Authorize & Preprocess**: Backend verifies permissions, normalizes file paths, and extracts changed line ranges.
-3. **Analyze**: Runs deterministic tools (Bandit, Ruff, Semgrep) and prompts Gemini with strict structured output constraints.
-4. **Validate & Deduplicate**: Rejects hallucinated line numbers or nonexistent files; merges overlapping static and AI findings.
-5. **Review & Approve**: Displays findings grouped by severity (Critical, High, Medium, Low, Info) with explicit evidence and proposed patches.
-
----
-
-## 🛡 Hybrid Analysis Strategy
-
-| Language / Domain | Tool | Purpose |
+| Component | Technology | Description |
 | :--- | :--- | :--- |
-| **Python Linting** | Ruff | Style, common mistakes, and code-quality rules |
-| **Python Security** | Bandit | Common insecure Python coding patterns (e.g. `exec`, shell injection) |
-| **Multi-Language SAST** | Semgrep | Pattern-based security, secrets, and correctness rules |
-| **JS / TypeScript** | ESLint / `tsc` | Type diagnostics, syntax errors, and lint compliance |
-| **Contextual Logic** | Google Gemini API | Logic flaws, missing edge cases, architectural smells, and localized fix generation |
+| **Frontend** | React 18, TypeScript, Vite, Tailwind CSS | High-performance, modern UI with white & soft lavender/blue SaaS palette |
+| **Routing** | React Router DOM v7 | Client-side routing with protected route guards |
+| **Icons** | Lucide React | Clean, consistent icons |
+| **Backend** | Python 3.12, FastAPI, Uvicorn | RESTful API orchestration and asynchronous processing |
+| **Database** | Supabase PostgreSQL + `pgvector` | Relational document metadata, user auth, and vector index |
+| **Object Storage**| Supabase Storage | Encrypted private document bucket with RLS |
+| **Testing** | Vitest, React Testing Library, JSDOM | Comprehensive unit and integration test coverage |
 
 ---
 
-## 📊 Severity & Findings Scoring Model
+## 🗄 Supabase Setup & Database Schema
 
-- **Critical**: Potentially severe issue with strong evidence (e.g., exposed credentials, remote code execution).
-- **High**: Material security or data-integrity risk (e.g., SQL injection, broken authorization).
-- **Medium**: Meaningful defect or reliability concern (e.g., unhandled exception path, race condition).
-- **Low**: Limited impact or maintainability concern (e.g., dead code, minor duplication).
-- **Info**: Stylistic observation, documentation suggestion, or readability hint.
+The database migration script is provided in [`supabase_schema.sql`](supabase_schema.sql).
 
----
+### Applying the Schema:
+1. Open your [Supabase Dashboard](https://supabase.com/dashboard).
+2. Navigate to the **SQL Editor** in the left sidebar.
+3. Copy the contents of [`supabase_schema.sql`](supabase_schema.sql) and click **Run**.
 
-## 💻 Technology Stack
-
-### Frontend
-- **Framework**: React 18 with TypeScript
-- **Bundler**: Vite
-- **Styling**: Tailwind CSS
-- **Code Editor**: Monaco Editor (`@monaco-editor/react`) with syntax support for 13 languages
-- **Icons**: Lucide React
-
-### Backend
-- **Framework**: FastAPI (Python 3.12+)
-- **Server**: Uvicorn (ASGI)
-- **Validation**: Pydantic v2
-- **Database / Auth**: Supabase PostgreSQL & Auth (Integrated in Milestone 2)
-- **AI Engine**: Google Gemini API via Google GenAI SDK (Integrated in Milestone 2/5)
-
----
-
-## 🌐 API Design
-
-| Method | Endpoint | Purpose |
-| :--- | :--- | :--- |
-| `GET` | `/health` | Service health status check |
-| `POST` | `/api/reviews` | Create review job from pasted code or uploaded files |
-| `GET` | `/api/reviews/{review_id}` | Retrieve review execution status and summary |
-| `GET` | `/api/reviews/{review_id}/findings` | List validated findings filtered by severity/category |
-| `POST` | `/api/reviews/{review_id}/reanalyze`| Request a fresh analysis run |
-| `POST` | `/api/findings/{finding_id}/suggest-fix` | Generate a targeted patch for a finding |
-| `POST` | `/api/patches/{patch_id}/approve` | Approve a suggested patch for application |
-| `POST` | `/api/github/connect` | Initiate OAuth GitHub authorization |
-| `POST` | `/api/github/webhook` | Ingest verified GitHub PR webhook events |
-| `GET` | `/api/projects/{project_id}/history` | Retrieve project historical quality audits |
+### Schema Summary:
+- **`public.documents` Table**:
+  - `id`: UUID (Primary Key, `gen_random_uuid()`)
+  - `user_id`: UUID (Foreign Key to `auth.users(id) ON DELETE CASCADE`)
+  - `file_name`: TEXT
+  - `file_type`: TEXT (`pdf`, `docx`, `txt`)
+  - `file_size`: BIGINT
+  - `storage_path`: TEXT
+  - `status`: TEXT (`uploaded`, `processing`, `ready`, `failed`)
+  - `created_at` / `updated_at`: TIMESTAMPTZ
+- **Row Level Security (RLS)**:
+  - Enabled on `public.documents` for `SELECT`, `INSERT`, `UPDATE`, and `DELETE`.
+- **Storage Bucket (`documents`)**:
+  - Created as a private bucket (`public = false`) with 50 MB limits.
+  - Storage policies enforce folder isolation by `${auth.uid()}`.
 
 ---
 
-## 🔒 Security, Privacy & Prompt-Injection Defense
+## 🔑 Environment Configuration
 
-- **No Secrets in Client**: API keys and service tokens are kept exclusively in server-side environment variables.
-- **Prompt-Injection Immunity**: Untrusted code snippets, comments, and PR text are treated strictly as data, never as system instructions.
-- **Isolated Execution**: Analyzers run in restricted worker processes with CPU, memory, and timeout bounds.
-- **Safe Fixes**: AI suggestions never alter source files automatically; developer approval is mandatory.
+Create a `.env` file in `frontend/` (see [`frontend/.env.example`](frontend/.env.example)):
 
----
+```env
+# Supabase Project URL
+VITE_SUPABASE_URL=https://oeczcuvxbqdbepgzzohk.supabase.co
 
-## 🗺 Development Roadmap & Milestones
+# Supabase Anonymous Public API Key (From Project Settings -> API)
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key_here
 
-- [x] **Milestone 1: Foundation (Current - Day 1)**
-  - React + Vite + TypeScript frontend with Monaco Editor
-  - Tailwind CSS dark-navy theme
-  - FastAPI backend with CORS and `/health` endpoint
-  - Comprehensive documentation & PDF specification in `docs/`
-- [ ] **Milestone 2: Auth & Data (Supabase)**
-- [ ] **Milestone 3: Code Intake & Automatic Language Detection**
-- [ ] **Milestone 4: Static Analysis Adapters (Ruff, Bandit, Semgrep)**
-- [ ] **Milestone 5: Gemini Structured Reasoning & Prompt Engine**
-- [ ] **Milestone 6: Finding Inspection UI & Filterable Diff Viewer**
-- [ ] **Milestone 7: Minimal Patch Generation & Approval Flow**
-- [ ] **Milestone 8: GitHub PR Integration & Webhook Handler**
-- [ ] **Milestone 9: Evaluation Suite, False-Positive Tuning & Benchmarks**
-- [ ] **Milestone 10: Production Deployment & Containerization**
-
----
-
-## 🚀 Getting Started Locally
-
-### Prerequisites
-- Node.js 18+ & npm
-- Python 3.12+
-
-### 1. Start Backend Server
-```bash
-cd backend
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# Backend FastAPI Service (Optional default: http://localhost:8000)
+VITE_API_BASE_URL=http://localhost:8000
 ```
-- API Health Check: `http://localhost:8000/health`
-- Swagger UI Docs: `http://localhost:8000/docs`
 
-### 2. Start Frontend Server
+---
+
+## 🚀 Local Development Guide
+
+### 1. Prerequisites
+- Node.js 18+ and npm
+- Python 3.10+ (for FastAPI backend)
+
+### 2. Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-- Web Application: `http://localhost:5173/`
+The application will launch at `http://localhost:5173`.
+
+### 3. Backend Setup
+```bash
+cd backend
+python -m venv venv
+# On Windows:
+venv\Scripts\activate
+# On macOS/Linux:
+source venv/bin/activate
+
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+API documentation available at `http://localhost:8000/docs`.
+
+---
+
+## 🧪 Automated Testing Suite
+
+The project includes unit and integration tests powered by Vitest and React Testing Library:
+
+```bash
+cd frontend
+npm test
+```
+
+### Test Coverage Highlights:
+- **`src/test/supabase.test.ts`**: Validates Supabase client initialization and environment variable bindings.
+- **`src/test/auth.test.tsx`**: Tests email/password validation, password visibility toggle, Supabase error handling, and protected route redirection.
+- **`src/test/documents.test.ts`**: Tests file format validation (PDF/DOCX/TXT), 25 MB size limits, byte formatting, and mocked Supabase DB and storage operations.
+- **`src/test/dashboard.test.tsx`**: Tests dashboard metric cards, quick uploader, recent documents table, and delete confirmation modals.
+- **Results**: **27 / 27 tests passing**.
+
+---
+
+## 🗺 Implementation Roadmap
+
+- [x] **Day 1: Foundation & Authentication**
+  - Supabase integration, AuthContext, Protected Routes, Login/Register pages.
+- [x] **Day 2: Dashboard & Document Management**
+  - Private Supabase Storage bucket, PostgreSQL `documents` table with RLS, Drag & Drop upload (PDF, DOCX, TXT), document list, and deletion.
+- [ ] **Day 3: Text Extraction & Embeddings**
+  - PyMuPDF and python-docx parsing, text chunking with overlap, Gemini embedding generation, `pgvector` indexing.
+- [ ] **Day 4: RAG Question Answering**
+  - Vector similarity search, prompt construction with citations, Gemini conversational stream, chat history persistence.
+- [ ] **Day 5: Summaries & Evaluation**
+  - Document-level summaries, quiz generation, retrieval quality benchmarks, deployment.
+
+---
+
+## 🔒 Security & Privacy
+
+1. **Credentials Isolation**: Service-role keys and LLM tokens are held exclusively on the backend; the frontend only uses the public Supabase `anon` key.
+2. **Database Row Level Security**: All queries and mutations verify `auth.uid() = user_id`.
+3. **Private File Storage**: Uploaded files can only be accessed by their owner via short-lived signed URLs.
+4. **Input Sanitization**: File extensions and MIME types are validated client-side and server-side.
+
+---
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).

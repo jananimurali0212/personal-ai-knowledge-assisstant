@@ -1,4 +1,33 @@
-export type NavPage = 'dashboard' | 'new-review' | 'history' | 'settings';
+export type NavPage = 
+  | 'dashboard' 
+  | 'documents' 
+  | 'assistant' 
+  | 'search' 
+  | 'settings'
+  | 'new-review' 
+  | 'history';
+
+export type DocumentProcessingStatus = 'uploaded' | 'processing' | 'ready' | 'failed';
+
+export interface DocumentRecord {
+  id: string;
+  user_id: string;
+  file_name: string;
+  file_type: 'pdf' | 'docx' | 'txt' | string;
+  file_size: number;
+  storage_path: string;
+  status: DocumentProcessingStatus;
+  created_at: string;
+  updated_at?: string;
+}
+
+export interface DocumentStats {
+  totalDocuments: number;
+  totalSizeBytes: number;
+  pdfCount: number;
+  docxCount: number;
+  txtCount: number;
+}
 
 export type SupportedLanguage = 
   | 'python'
@@ -33,4 +62,3 @@ export interface ReviewHistoryItem {
   status: 'Completed' | 'Pending' | 'Needs Attention';
   criticalIssues: number;
 }
-

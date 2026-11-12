@@ -1,269 +1,254 @@
-import React from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
-  FileCode2, 
-  AlertTriangle, 
-  Flame, 
+  FileText, 
+  HardDrive, 
+  UploadCloud, 
+  Sparkles, 
   ArrowRight, 
-  CheckCircle2, 
-  Clock, 
-  Sparkles,
-  TrendingUp,
-  Cpu,
-  Layers
+  ShieldCheck, 
+  Bot
 } from 'lucide-react';
-import { NavPage } from '../types';
-import { MOCK_DASHBOARD_METRICS, MOCK_RECENT_REVIEWS } from '../services/mockData';
+import { useAuth } from '../context/AuthContext';
+import { NavPage, DocumentRecord, DocumentStats } from '../types';
+import { 
+  fetchUserDocuments, 
+  deleteUserDocument, 
+  calculateDocumentStats, 
+  formatBytes 
+} from '../services/documents';
+import { DocumentUploadZone } from '../components/DocumentUploadZone';
+import { DocumentTable } from '../components/DocumentTable';
 
 interface DashboardPageProps {
   onNavigate: (page: NavPage) => void;
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
+  const { user } = useAuth();
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [stats, setStats] = useState<DocumentStats>({
+    totalDocuments: 0,
+    totalSizeBytes: 0,
+    pdfCount: 0,
+    docxCount: 0,
+    txtCount: 0,
+  });
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isSchemaMissing, setIsSchemaMissing] = useState<boolean>(false);
+
+  const loadDocuments = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    const { data, error, isSchemaMissing: missing } = await fetchUserDocuments(user.id);
+
+    if (error) {
+      setErrorMessage(error);
+      setIsSchemaMissing(Boolean(missing));
+    } else {
+      setDocuments(data);
+      setStats(calculateDocumentStats(data));
+      setIsSchemaMissing(false);
+    }
+    setIsLoading(false);
+  }, [user]);
+
+  useEffect(() => {
+    loadDocuments();
+  }, [loadDocuments]);
+
+  const handleUploadSuccess = (newDoc: DocumentRecord) => {
+    setDocuments((prev) => {
+      const updated = [newDoc, ...prev];
+      setStats(calculateDocumentStats(updated));
+      return updated;
+    });
+  };
+
+  const handleDeleteDocument = async (doc: DocumentRecord): Promise<boolean> => {
+    if (!user) return false;
+    const { error } = await deleteUserDocument(doc, user.id);
+    if (error) {
+      alert(`Deletion failed: ${error}`);
+      return false;
+    }
+    setDocuments((prev) => {
+      const updated = prev.filter((d) => d.id !== doc.id);
+      setStats(calculateDocumentStats(updated));
+      return updated;
+    });
+    return true;
+  };
+
   return (
-    <div className="space-y-8">
-      {/* Hero Welcome Banner */}
-      <div className="relative overflow-hidden rounded-2xl border border-purple-500/20 bg-gradient-to-r from-purple-900/30 via-indigo-950/40 to-slate-900/60 p-6 sm:p-8 backdrop-blur-md shadow-xl">
+    <div className="space-y-8 max-w-7xl">
+      {/* Welcome & AI Knowledge Banner */}
+      <div className="relative overflow-hidden rounded-3xl border border-purple-500/20 bg-gradient-to-r from-purple-950/40 via-indigo-950/40 to-slate-900/60 p-6 sm:p-8 backdrop-blur-md shadow-2xl">
         <div className="absolute -right-12 -top-12 h-64 w-64 rounded-full bg-purple-600/10 blur-3xl pointer-events-none" />
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="space-y-2 max-w-2xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-purple-500/30 bg-purple-500/10 px-3 py-1 text-xs font-semibold text-purple-300">
               <Sparkles className="h-3.5 w-3.5 text-purple-400" />
-              <span>Day 1 Project Foundation Active</span>
+              <span>Personal AI Knowledge Hub</span>
             </div>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
-              Code Intelligence & Security Platform
+              Knowledge Assistant Dashboard
             </h2>
             <p className="text-sm text-slate-300 leading-relaxed">
-              ReviewAI automatically analyzes code across 13 programming languages to uncover logic flaws, 
-              performance bottlenecks, and security vulnerabilities with surgical precision.
+              Upload your research papers, notes, and manuals in PDF, DOCX, or TXT format. 
+              Files are privately secured in Supabase Storage and ready to power your AI assistant.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <button
-              onClick={() => onNavigate('new-review')}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-600/30 transition-all hover:scale-[1.02] hover:opacity-95 active:scale-95"
+              onClick={() => onNavigate('documents')}
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-4 py-2.5 text-xs font-semibold text-white shadow-lg shadow-purple-600/25 transition-all hover:scale-[1.02] active:scale-95"
             >
-              <FileCode2 className="h-4 w-4" />
-              <span>New Code Review</span>
+              <FileText className="h-4 w-4" />
+              <span>My Documents</span>
               <ArrowRight className="h-4 w-4 ml-1" />
             </button>
             <button
-              onClick={() => onNavigate('history')}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-3 text-sm font-medium text-slate-300 transition-all hover:bg-slate-700 hover:text-white"
+              onClick={() => onNavigate('assistant')}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800/80 px-4 py-2.5 text-xs font-medium text-slate-300 transition-all hover:bg-slate-700 hover:text-white"
             >
-              <span>View History</span>
+              <Bot className="h-4 w-4 text-purple-400" />
+              <span>AI Assistant</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Key Metric Overview Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-        {/* Total Reviews Card */}
-        <div className="group relative rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm transition-all duration-300 hover:border-purple-500/40 hover:shadow-lg hover:shadow-purple-950/20">
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        {/* Total Documents */}
+        <div className="rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm transition-all hover:border-purple-500/30">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Reviews</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20 group-hover:scale-110 transition-transform">
-              <FileCode2 className="h-5 w-5" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Documents</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <FileText className="h-5 w-5" />
             </div>
           </div>
-          <div className="mt-4 flex items-baseline gap-3">
-            <span className="text-3xl font-extrabold tracking-tight text-white font-mono">
-              {MOCK_DASHBOARD_METRICS.totalReviews}
-            </span>
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
-              <TrendingUp className="h-3 w-3" />
-              {MOCK_DASHBOARD_METRICS.totalReviewsTrend}
-            </span>
+          <div className="mt-4 flex items-baseline gap-2">
+            <span className="text-3xl font-extrabold text-white tracking-tight">{stats.totalDocuments}</span>
+            <span className="text-xs text-slate-400">files</span>
           </div>
-          <p className="mt-2 text-xs text-slate-400">
-            Source code submissions processed across repositories
+          <p className="mt-1 text-[11px] text-slate-400">
+            {stats.pdfCount} PDF · {stats.docxCount} DOCX · {stats.txtCount} TXT
           </p>
         </div>
 
-        {/* Issues Detected Card */}
-        <div className="group relative rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm transition-all duration-300 hover:border-amber-500/40 hover:shadow-lg hover:shadow-amber-950/20">
+        {/* Storage Usage */}
+        <div className="rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm transition-all hover:border-purple-500/30">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Issues Detected</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 group-hover:scale-110 transition-transform">
-              <AlertTriangle className="h-5 w-5" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Storage Used</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              <HardDrive className="h-5 w-5" />
             </div>
           </div>
-          <div className="mt-4 flex items-baseline gap-3">
-            <span className="text-3xl font-extrabold tracking-tight text-white font-mono">
-              {MOCK_DASHBOARD_METRICS.issuesDetected}
-            </span>
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-amber-400">
-              {MOCK_DASHBOARD_METRICS.issuesTrend}
+          <div className="mt-4 flex items-baseline gap-2">
+            <span className="text-3xl font-extrabold text-white tracking-tight">
+              {formatBytes(stats.totalSizeBytes)}
             </span>
           </div>
-          <p className="mt-2 text-xs text-slate-400">
-            Code smells, performance hits, and lint anomalies
+          <p className="mt-1 text-[11px] text-slate-400">
+            Private bucket storage allocated
           </p>
         </div>
 
-        {/* Critical Issues Card */}
-        <div className="group relative rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm transition-all duration-300 hover:border-rose-500/40 hover:shadow-lg hover:shadow-rose-950/20 sm:col-span-2 lg:col-span-1">
+        {/* Privacy & RLS */}
+        <div className="rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm transition-all hover:border-purple-500/30">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Critical Issues</span>
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 group-hover:scale-110 transition-transform">
-              <Flame className="h-5 w-5" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Security Model</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <ShieldCheck className="h-5 w-5" />
             </div>
           </div>
-          <div className="mt-4 flex items-baseline gap-3">
-            <span className="text-3xl font-extrabold tracking-tight text-white font-mono">
-              {MOCK_DASHBOARD_METRICS.criticalIssues}
-            </span>
-            <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
-              <CheckCircle2 className="h-3 w-3" />
-              {MOCK_DASHBOARD_METRICS.criticalTrend}
+          <div className="mt-4 flex items-baseline gap-2">
+            <span className="text-xl font-bold text-white tracking-tight">RLS Active</span>
+          </div>
+          <p className="mt-1 text-[11px] text-emerald-400/90 flex items-center gap-1">
+            <span>Isolated per authenticated UID</span>
+          </p>
+        </div>
+
+        {/* Knowledge Status */}
+        <div className="rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm transition-all hover:border-purple-500/30">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Assistant State</span>
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
+              <Bot className="h-5 w-5" />
+            </div>
+          </div>
+          <div className="mt-4 flex items-baseline gap-2">
+            <span className="text-xl font-bold text-white tracking-tight">
+              {stats.totalDocuments > 0 ? 'Ready' : 'Awaiting Docs'}
             </span>
           </div>
-          <p className="mt-2 text-xs text-slate-400">
-            Severe security risks, memory leaks, and null dereferences
+          <p className="mt-1 text-[11px] text-slate-400">
+            {stats.totalDocuments > 0 ? `${stats.totalDocuments} sources connected` : 'Upload docs to begin'}
           </p>
         </div>
       </div>
 
-      {/* Architecture Highlights & Recent Reviews */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Reviews Table Section (2 Cols) */}
-        <div className="lg:col-span-2 rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <h3 className="text-base font-semibold text-white">Recent Code Reviews</h3>
-              <p className="text-xs text-slate-400">Latest analysis records and inspection health</p>
-            </div>
+      {/* Quick Upload Section */}
+      <div className="rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm shadow-xl">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+              <UploadCloud className="h-4 w-4 text-purple-400" />
+              <span>Quick Document Upload</span>
+            </h3>
+            <p className="text-xs text-slate-400">Upload PDF, DOCX, or TXT directly to your private knowledge store</p>
+          </div>
+        </div>
+
+        {user && (
+          <DocumentUploadZone
+            userId={user.id}
+            onUploadSuccess={handleUploadSuccess}
+            compact={true}
+          />
+        )}
+      </div>
+
+      {/* Recently Uploaded Documents */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <h3 className="text-sm font-semibold text-white">Recently Uploaded Documents</h3>
+          {documents.length > 5 && (
             <button
-              onClick={() => onNavigate('history')}
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-purple-400 hover:text-purple-300"
+              onClick={() => onNavigate('documents')}
+              className="text-xs font-medium text-purple-400 hover:text-purple-300 flex items-center gap-1"
             >
-              <span>View all</span>
+              <span>View all ({documents.length})</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </button>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead>
-                <tr className="border-b border-slate-800 text-slate-400 font-semibold uppercase tracking-wider">
-                  <th className="pb-3 pl-2">Project / File</th>
-                  <th className="pb-3 px-3">Language</th>
-                  <th className="pb-3 px-3">Date</th>
-                  <th className="pb-3 px-3">Issues</th>
-                  <th className="pb-3 pr-2 text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {MOCK_RECENT_REVIEWS.map((review) => (
-                  <tr
-                    key={review.id}
-                    className="group hover:bg-slate-800/40 transition-colors cursor-pointer"
-                    onClick={() => onNavigate('history')}
-                  >
-                    <td className="py-3.5 pl-2 font-medium text-slate-200">
-                      <div>
-                        <div className="font-semibold text-white">{review.projectName}</div>
-                        <div className="text-[11px] font-mono text-purple-300/80">{review.fileName}</div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-3">
-                      <span className="rounded-md border border-slate-700 bg-slate-800/90 px-2 py-1 text-[11px] font-mono text-slate-300">
-                        {review.language}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-3 text-slate-400 font-mono text-[11px]">
-                      {review.reviewDate}
-                    </td>
-                    <td className="py-3.5 px-3">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-slate-200">{review.issueCount}</span>
-                        {review.criticalIssues > 0 && (
-                          <span className="inline-flex items-center gap-0.5 rounded bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-rose-400 border border-rose-500/30">
-                            {review.criticalIssues} crit
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="py-3.5 pr-2 text-right">
-                      <span
-                        className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${
-                          review.status === 'Completed'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                        }`}
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            review.status === 'Completed' ? 'bg-emerald-400' : 'bg-amber-400'
-                          }`}
-                        />
-                        {review.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          )}
         </div>
 
-        {/* System Capabilities & Day 1 Roadmap (1 Col) */}
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-slate-800 bg-[#0F172A]/70 p-6 backdrop-blur-sm">
-            <h3 className="text-base font-semibold text-white mb-2 flex items-center gap-2">
-              <Cpu className="h-4 w-4 text-purple-400" />
-              <span>Multi-Language Engine</span>
-            </h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Supported parser syntaxes ready for code submission:
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {[
-                'Python', 'Java', 'C', 'C++', 'JavaScript', 
-                'TypeScript', 'Go', 'Rust', 'PHP', 'C#', 
-                'HTML', 'CSS', 'SQL'
-              ].map((lang) => (
-                <span
-                  key={lang}
-                  className="rounded-lg border border-slate-800 bg-[#0B0F19] px-2.5 py-1 text-[11px] font-mono text-slate-300"
-                >
-                  {lang}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="rounded-2xl border border-purple-900/30 bg-gradient-to-br from-purple-950/20 to-slate-900/80 p-6 backdrop-blur-sm">
-            <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
-              <Layers className="h-4 w-4 text-indigo-400" />
-              <span>5-Day Roadmap Status</span>
-            </h3>
-            <ul className="space-y-2 text-xs">
-              <li className="flex items-center gap-2 text-emerald-400 font-medium">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                <span>Day 1: UI Foundation & Monaco Editor (Active)</span>
-              </li>
-              <li className="flex items-center gap-2 text-slate-400">
-                <Clock className="h-3.5 w-3.5" />
-                <span>Day 2: AI Prompting & Language Detection</span>
-              </li>
-              <li className="flex items-center gap-2 text-slate-400">
-                <Clock className="h-3.5 w-3.5" />
-                <span>Day 3: Static Analysis & Security Rules</span>
-              </li>
-              <li className="flex items-center gap-2 text-slate-400">
-                <Clock className="h-3.5 w-3.5" />
-                <span>Day 4: History Database & Analytics</span>
-              </li>
-              <li className="flex items-center gap-2 text-slate-400">
-                <Clock className="h-3.5 w-3.5" />
-                <span>Day 5: Performance & Final Polish</span>
-              </li>
-            </ul>
-          </div>
-        </div>
+        <DocumentTable
+          documents={documents}
+          isLoading={isLoading}
+          errorMessage={errorMessage}
+          isSchemaMissing={isSchemaMissing}
+          onDeleteDocument={handleDeleteDocument}
+          onRefresh={loadDocuments}
+          limit={5}
+          title="Recent Documents"
+          emptyAction={
+            <button
+              onClick={() => onNavigate('documents')}
+              className="inline-flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-xs font-semibold text-white hover:bg-purple-500 shadow-md shadow-purple-600/20"
+            >
+              <UploadCloud className="h-4 w-4" />
+              <span>Go to My Documents</span>
+            </button>
+          }
+        />
       </div>
     </div>
   );

@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import { 
   LayoutDashboard, 
-  Code2, 
-  History, 
+  FileText, 
+  Bot, 
+  Search, 
   Settings, 
   ShieldCheck, 
   Activity, 
   Menu, 
   X, 
-  Sparkles
+  Sparkles,
+  LogOut
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { NavPage } from '../types';
 import { checkBackendHealth, HealthResponse } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 interface DashboardLayoutProps {
   currentPage: NavPage;
@@ -27,6 +31,24 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backendHealth, setBackendHealth] = useState<HealthResponse | null>(null);
   const [isHealthChecking, setIsHealthChecking] = useState(true);
+
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const userEmail = user?.email || 'knowledge@assistant.dev';
+  const userName = (user?.user_metadata?.full_name as string) || userEmail.split('@')[0];
+  const initials = userName
+    .split(' ')
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 2) || 'AI';
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login', { replace: true });
+  };
 
   useEffect(() => {
     let isMounted = true;
@@ -61,16 +83,22 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       badge: undefined,
     },
     {
-      id: 'new-review' as NavPage,
-      label: 'New Review',
-      icon: Code2,
-      badge: 'Editor',
+      id: 'documents' as NavPage,
+      label: 'My Documents',
+      icon: FileText,
+      badge: 'Files',
     },
     {
-      id: 'history' as NavPage,
-      label: 'Review History',
-      icon: History,
-      badge: '10',
+      id: 'assistant' as NavPage,
+      label: 'AI Assistant',
+      icon: Bot,
+      badge: 'AI',
+    },
+    {
+      id: 'search' as NavPage,
+      label: 'Search',
+      icon: Search,
+      badge: undefined,
     },
     {
       id: 'settings' as NavPage,
@@ -79,6 +107,23 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       badge: undefined,
     },
   ];
+
+  const getPageTitle = (page: NavPage) => {
+    switch (page) {
+      case 'dashboard':
+        return 'Overview Dashboard';
+      case 'documents':
+        return 'My Knowledge Documents';
+      case 'assistant':
+        return 'AI Assistant';
+      case 'search':
+        return 'Knowledge Search';
+      case 'settings':
+        return 'Preferences & Settings';
+      default:
+        return 'Dashboard';
+    }
+  };
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[#070a13] text-slate-100">
@@ -104,12 +149,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             </div>
             <div>
               <div className="flex items-center space-x-1.5">
-                <span className="font-bold tracking-tight text-white text-lg">ReviewAI</span>
+                <span className="font-bold tracking-tight text-white text-base">KnowledgeAI</span>
                 <span className="rounded bg-purple-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-purple-400 border border-purple-500/20">
-                  v0.1
+                  Assistant
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">AI Code Reviewer</p>
+              <p className="text-[11px] text-slate-400 font-medium">Personal AI Assistant</p>
             </div>
           </div>
           <button
@@ -166,8 +211,30 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           })}
         </div>
 
-        {/* Sidebar Footer with Live API Status */}
+        {/* Sidebar Footer with Live API Status & User Profile */}
         <div className="border-t border-slate-800/80 p-3 space-y-3">
+          {/* User Profile Card */}
+          <div className="flex items-center justify-between rounded-xl border border-slate-800/70 bg-[#0F172A]/70 p-2.5">
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <div className="h-7 w-7 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center text-[10px] font-bold text-white shrink-0">
+                {initials}
+              </div>
+              <div className="min-w-0 text-left">
+                <p className="truncate text-xs font-medium text-slate-200">{userName}</p>
+                <p className="truncate text-[10px] text-slate-400">{userEmail}</p>
+              </div>
+            </div>
+            <button
+              onClick={handleSignOut}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-rose-400 transition-colors shrink-0"
+              title="Sign Out"
+              aria-label="Sign Out"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Backend Status indicator */}
           <div className="rounded-xl border border-slate-800/70 bg-[#0F172A]/70 p-3">
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1.5">
@@ -200,9 +267,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
           <div className="flex items-center justify-between px-2 text-[11px] text-slate-400">
             <span className="flex items-center gap-1">
-              <ShieldCheck className="h-3.5 w-3.5 text-purple-400" /> Day 1 Baseline
+              <ShieldCheck className="h-3.5 w-3.5 text-purple-400" /> Supabase Storage
             </span>
-            <span className="text-slate-400 font-mono">React + TS</span>
+            <span className="text-slate-400 font-mono">Postgres RLS</span>
           </div>
         </div>
       </aside>
@@ -220,34 +287,43 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               <Menu className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-base font-semibold text-white capitalize">
-                {currentPage === 'new-review' ? 'New Code Review' : currentPage.replace('-', ' ')}
+              <h1 className="text-base font-semibold text-white">
+                {getPageTitle(currentPage)}
               </h1>
               <p className="text-xs text-slate-400 hidden sm:block">
-                Advanced multi-language source code quality & security inspection
+                Personal AI Knowledge Assistant · RAG-ready Document Management
               </p>
             </div>
           </div>
 
           <div className="flex items-center space-x-4">
-            {currentPage !== 'new-review' && (
+            {currentPage !== 'documents' && (
               <button
-                onClick={() => onNavigate('new-review')}
+                onClick={() => onNavigate('documents')}
                 className="hidden sm:inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-md shadow-purple-600/25 transition-all hover:opacity-95 active:scale-95"
               >
-                <Code2 className="h-3.5 w-3.5" />
-                <span>New Review</span>
+                <FileText className="h-3.5 w-3.5" />
+                <span>My Documents</span>
               </button>
             )}
 
+            {/* User Profile & Sign Out */}
             <div className="flex items-center space-x-3 border-l border-slate-800 pl-4">
               <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center text-xs font-bold text-white shadow-inner">
-                RA
+                {initials}
               </div>
               <div className="hidden md:block text-left text-xs">
-                <p className="font-medium text-slate-200">Dev Team</p>
-                <p className="text-[10px] text-slate-400">admin@reviewai.dev</p>
+                <p className="font-medium text-slate-200">{userName}</p>
+                <p className="text-[10px] text-slate-400">{userEmail}</p>
               </div>
+              <button
+                onClick={handleSignOut}
+                className="ml-2 flex items-center gap-1.5 rounded-lg border border-slate-700/80 bg-slate-800/70 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:border-slate-600 hover:bg-slate-700 hover:text-white transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="h-3.5 w-3.5 text-slate-400 hover:text-white" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
             </div>
           </div>
         </header>
