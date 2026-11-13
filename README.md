@@ -95,15 +95,22 @@ The architecture separates the presentation layer, application backend, RAG engi
 
 ## 🗄 Supabase Setup & Database Schema
 
-The database migration script is provided in [`supabase_schema.sql`](supabase_schema.sql).
+The database migration scripts are provided in:
+- Full idempotent schema: [`supabase_schema.sql`](supabase_schema.sql)
+- Migration file (Day 2): [`supabase/migrations/20261113_001_create_document_chunks.sql`](supabase/migrations/20261113_001_create_document_chunks.sql)
+- SQL Verification suite: [`supabase/verification_queries.sql`](supabase/verification_queries.sql)
 
-### Applying the Schema:
+### Applying the Schema / Migration:
 1. Open your [Supabase Dashboard](https://supabase.com/dashboard).
 2. Navigate to the **SQL Editor** in the left sidebar.
-3. Copy the contents of [`supabase_schema.sql`](supabase_schema.sql) and click **Run**.
+3. Open either:
+   - [`supabase/migrations/20261113_001_create_document_chunks.sql`](supabase/migrations/20261113_001_create_document_chunks.sql) (to apply Day 2 vector additions), or
+   - [`supabase_schema.sql`](supabase_schema.sql) (for the full end-to-end idempotent schema).
+4. Paste the SQL script and click **Run**.
+5. To verify the installation, execute [`supabase/verification_queries.sql`](supabase/verification_queries.sql) in the SQL Editor.
 
 ### Schema Summary:
-- **`public.documents` Table**:
+- **`public.documents` Table (Day 1 - Preserved)**:
   - `id`: UUID (Primary Key, `gen_random_uuid()`)
   - `user_id`: UUID (Foreign Key to `auth.users(id) ON DELETE CASCADE`)
   - `file_name`: TEXT
@@ -112,8 +119,26 @@ The database migration script is provided in [`supabase_schema.sql`](supabase_sc
   - `storage_path`: TEXT
   - `status`: TEXT (`uploaded`, `processing`, `ready`, `failed`)
   - `created_at` / `updated_at`: TIMESTAMPTZ
+- **`public.document_chunks` Table (Day 2 - Vector Store)**:
+  - `id`: UUID (Primary Key, `gen_random_uuid()`)
+  - `user_id`: UUID (Foreign Key to `auth.users(id) ON DELETE CASCADE`)
+  - `document_id`: UUID (Foreign Key to `public.documents(id) ON DELETE CASCADE`)
+  - `chunk_index`: INTEGER (0-indexed position within document; unique per document)
+  - `content`: TEXT (Extracted chunk text)
+  - `page_number`: INTEGER (Page number origin, default `1`)
+  - `embedding`: `vector(768)` (Native 768-dimensional Google Gemini `text-embedding-004` vector)
+  - `created_at`: TIMESTAMPTZ
+- **Indexing Strategy**:
+  - `idx_document_chunks_document_id`: B-Tree for fast document chunk retrieval and deletions
+  - `idx_document_chunks_user_id`: B-Tree for fast user-level tenant lookups
+  - `idx_document_chunks_doc_chunk_idx`: Composite B-Tree for sequential text reconstruction
+  - `idx_document_chunks_embedding_hnsw`: **HNSW** vector index with `vector_cosine_ops` for sub-linear cosine distance similarity search
 - **Row Level Security (RLS)**:
-  - Enabled on `public.documents` for `SELECT`, `INSERT`, `UPDATE`, and `DELETE`.
+  - Enabled on `public.documents` and `public.document_chunks` for `SELECT`, `INSERT`, `UPDATE`, and `DELETE`.
+  - Ensures multi-tenant isolation where users can only view, insert, update, or delete chunks matching their authenticated user ID (`auth.uid() = user_id`).
+- **Semantic Search RPC (`public.match_document_chunks`)**:
+  - Callable via Supabase RPC / FastAPI backend.
+  - Computes cosine similarity `(1 - (embedding <=> query_embedding))`, supports threshold filtering, top-k limits, and optional document filters.
 - **Storage Bucket (`documents`)**:
   - Created as a private bucket (`public = false`) with 50 MB limits.
   - Storage policies enforce folder isolation by `${auth.uid()}`.

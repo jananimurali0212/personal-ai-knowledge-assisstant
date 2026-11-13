@@ -29,6 +29,27 @@ export interface DocumentStats {
   txtCount: number;
 }
 
+export interface DocumentChunk {
+  id: string;
+  user_id: string;
+  document_id: string;
+  chunk_index: number;
+  content: string;
+  page_number: number;
+  embedding?: number[];
+  created_at: string;
+}
+
+export interface ChunkSimilarityMatch {
+  id: string;
+  document_id: string;
+  user_id: string;
+  chunk_index: number;
+  content: string;
+  page_number: number;
+  similarity: number;
+}
+
 export type SupportedLanguage = 
   | 'python'
   | 'java'

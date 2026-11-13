@@ -261,3 +261,4 @@ The completed system will let a user build a private searchable knowledge base a
 ## 19. Conclusion
 
 This project combines document processing, vector search, retrieval-augmented generation, and conversational AI in a practical knowledge management application. Its modular architecture supports an achievable first release while leaving room for stronger retrieval, multimodal ingestion, richer memory, and production-grade observability.
+
