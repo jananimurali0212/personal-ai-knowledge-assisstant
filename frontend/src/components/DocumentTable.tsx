@@ -8,11 +8,16 @@ import {
   AlertCircle,
   Loader2,
   FileSearch,
-  Database
+  Database,
+  Sparkles,
+  BookOpen,
+  HelpCircle,
 } from 'lucide-react';
-import { DocumentRecord } from '../types';
-import { formatBytes, getDocumentDownloadUrl } from '../services/documents';
+import { DocumentRecord, DocumentSummaryResponse } from '../types';
+import { formatBytes, getDocumentDownloadUrl, summarizeDocument } from '../services/documents';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
+import { DocumentSummaryModal } from './DocumentSummaryModal';
+import { QuizModal } from './QuizModal';
 
 interface DocumentTableProps {
   documents: DocumentRecord[];
@@ -40,6 +45,71 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
   const [docToDelete, setDocToDelete] = useState<DocumentRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  // Document Summarization state
+  const [selectedDocForSummary, setSelectedDocForSummary] = useState<DocumentRecord | null>(null);
+  const [summaryResponse, setSummaryResponse] = useState<DocumentSummaryResponse | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState<boolean>(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
+
+  // Document Quiz state
+  const [selectedDocForQuiz, setSelectedDocForQuiz] = useState<DocumentRecord | null>(null);
+
+  const handleOpenSummary = async (doc: DocumentRecord) => {
+    setSelectedDocForSummary(doc);
+    setSummaryError(null);
+
+    // If document already contains a loaded summary, show it immediately
+    if (doc.summary) {
+      setSummaryResponse({
+        document_id: doc.id,
+        user_id: doc.user_id,
+        file_name: doc.file_name,
+        file_type: doc.file_type,
+        status: 'completed',
+        summary: doc.summary,
+        cached: true,
+      });
+      return;
+    }
+
+    // Otherwise trigger or fetch summary from backend
+    setIsSummarizing(true);
+    setSummaryResponse(null);
+
+    const { data, error } = await summarizeDocument(doc.id, doc.user_id, false);
+    setIsSummarizing(false);
+
+    if (error || !data) {
+      setSummaryError(error || 'Failed to generate document summary.');
+    } else {
+      setSummaryResponse(data);
+      // Update local doc record summary if possible
+      doc.summary = data.summary;
+      doc.summary_status = 'completed';
+    }
+  };
+
+  const handleRegenerateSummary = async () => {
+    if (!selectedDocForSummary) return;
+    setIsSummarizing(true);
+    setSummaryError(null);
+
+    const { data, error } = await summarizeDocument(
+      selectedDocForSummary.id,
+      selectedDocForSummary.user_id,
+      true
+    );
+    setIsSummarizing(false);
+
+    if (error || !data) {
+      setSummaryError(error || 'Failed to regenerate summary.');
+    } else {
+      setSummaryResponse(data);
+      selectedDocForSummary.summary = data.summary;
+      selectedDocForSummary.summary_status = 'completed';
+    }
+  };
 
   const displayedDocs = limit ? documents.slice(0, limit) : documents;
 
@@ -267,7 +337,42 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
 
                   {/* Actions */}
                   <td className="py-3.5 pl-4 pr-6 text-right whitespace-nowrap">
-                    <div className="inline-flex items-center gap-1.5">
+                    <div className="inline-flex items-center gap-2">
+                      {/* Summarize Document Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSummary(doc)}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all ${
+                          doc.summary || doc.summary_status === 'completed'
+                            ? 'border border-purple-500/40 bg-purple-500/15 text-purple-200 hover:bg-purple-500/25 shadow-sm shadow-purple-500/10'
+                            : 'border border-slate-700/80 bg-slate-800/80 text-slate-300 hover:border-purple-500/40 hover:bg-slate-700 hover:text-white'
+                        }`}
+                        title={doc.summary || doc.summary_status === 'completed' ? "View AI Summary" : "Generate AI Summary"}
+                      >
+                        {doc.summary || doc.summary_status === 'completed' ? (
+                          <>
+                            <BookOpen className="h-3.5 w-3.5 text-purple-400" />
+                            <span>Summary</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                            <span>Summarize</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Quiz Button */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDocForQuiz(doc)}
+                        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all border border-slate-700/80 bg-slate-800/80 text-slate-300 hover:border-indigo-500/40 hover:bg-slate-700 hover:text-indigo-200"
+                        title="Generate Grounded AI Quiz"
+                      >
+                        <HelpCircle className="h-3.5 w-3.5 text-indigo-400" />
+                        <span>Quiz</span>
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleDownload(doc)}
@@ -308,6 +413,25 @@ export const DocumentTable: React.FC<DocumentTableProps> = ({
         isLoading={isDeleting}
         onClose={() => setDocToDelete(null)}
         onConfirm={handleDeleteConfirm}
+      />
+
+      {/* Document AI Summary Modal */}
+      <DocumentSummaryModal
+        isOpen={Boolean(selectedDocForSummary)}
+        onClose={() => setSelectedDocForSummary(null)}
+        document={selectedDocForSummary}
+        summaryResponse={summaryResponse}
+        isLoading={isSummarizing}
+        errorMessage={summaryError}
+        onRegenerate={handleRegenerateSummary}
+      />
+
+      {/* Document AI Quiz Modal */}
+      <QuizModal
+        isOpen={Boolean(selectedDocForQuiz)}
+        onClose={() => setSelectedDocForQuiz(null)}
+        document={selectedDocForQuiz}
+        userId={selectedDocForQuiz?.user_id || ''}
       />
     </div>
   );

@@ -139,3 +139,50 @@ def test_no_hardcoded_api_keys():
     assert "AIza" not in content  # Standard Google API key prefix
     assert "sk-" not in content
 
+
+def test_document_summaries_schema_migration():
+    """Verify that document summaries migration file exists and contains all required schema definitions."""
+    migration_path = os.path.join(
+        PROJECT_ROOT, "supabase", "migrations", "20261114_003_document_summaries.sql"
+    )
+    assert os.path.exists(migration_path)
+
+    with open(migration_path, "r", encoding="utf-8") as f:
+        sql = f.read()
+
+    # 1. Alter documents table
+    assert "ALTER TABLE public.documents" in sql
+    assert "summary JSONB" in sql
+    assert "summary_status TEXT" in sql
+    assert "summarized_at TIMESTAMP" in sql
+
+    # 2. Table creation
+    assert "CREATE TABLE IF NOT EXISTS public.document_summaries" in sql
+    assert "executive_summary TEXT NOT NULL" in sql
+    assert "main_topics JSONB" in sql
+    assert "important_points JSONB" in sql
+    assert "key_terminology JSONB" in sql
+    assert "important_conclusions JSONB" in sql
+    assert "hierarchical BOOLEAN" in sql
+    assert "model_used TEXT NOT NULL" in sql
+
+    # 3. Row Level Security & Indexes
+    assert "ALTER TABLE public.document_summaries ENABLE ROW LEVEL SECURITY" in sql
+    assert "idx_document_summaries_user_id" in sql
+    assert "idx_document_summaries_doc_id" in sql
+    assert "Users can view their own document summaries" in sql
+
+
+def test_root_schema_includes_document_summaries():
+    """Verify root supabase_schema.sql includes document_summaries definitions."""
+    schema_path = os.path.join(PROJECT_ROOT, "supabase_schema.sql")
+    assert os.path.exists(schema_path)
+
+    with open(schema_path, "r", encoding="utf-8") as f:
+        sql = f.read()
+
+    assert "PART 8: DOCUMENT SUMMARIES" in sql
+    assert "public.document_summaries" in sql
+    assert "idx_documents_summary_status" in sql
+
+

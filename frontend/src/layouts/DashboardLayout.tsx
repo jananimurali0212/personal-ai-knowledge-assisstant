@@ -10,11 +10,14 @@ import {
   Menu, 
   X, 
   Sparkles,
-  LogOut
+  LogOut,
+  MessageSquare,
+  Plus
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { NavPage } from '../types';
+import { NavPage, ConversationRecord } from '../types';
 import { checkBackendHealth, HealthResponse } from '../services/api';
+import { fetchUserConversations } from '../services/conversations';
 import { useAuth } from '../context/AuthContext';
 
 interface DashboardLayoutProps {
@@ -31,6 +34,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [backendHealth, setBackendHealth] = useState<HealthResponse | null>(null);
   const [isHealthChecking, setIsHealthChecking] = useState(true);
+  const [sidebarConversations, setSidebarConversations] = useState<ConversationRecord[]>([]);
 
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
@@ -49,6 +53,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     await signOut();
     navigate('/login', { replace: true });
   };
+
+  useEffect(() => {
+    if (!user) return;
+    fetchUserConversations(user.id).then((convs) => {
+      setSidebarConversations(convs.slice(0, 5));
+    });
+  }, [user, currentPage]);
 
   useEffect(() => {
     let isMounted = true;
@@ -209,6 +220,47 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
               </button>
             );
           })}
+
+          {/* Recent Conversations in Sidebar */}
+          <div className="pt-4">
+            <div className="flex items-center justify-between px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+              <span>Recent Chats</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigate('/assistant');
+                  setMobileMenuOpen(false);
+                }}
+                className="text-purple-400 hover:text-purple-300 p-0.5 rounded"
+                title="New Chat"
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+
+            {sidebarConversations.length === 0 ? (
+              <div className="px-3 py-2 text-[11px] text-slate-500 italic">
+                No recent chats
+              </div>
+            ) : (
+              <div className="space-y-1">
+                {sidebarConversations.map((conv) => (
+                  <button
+                    key={conv.id}
+                    onClick={() => {
+                      navigate(`/assistant?c=${conv.id}`);
+                      setMobileMenuOpen(false);
+                    }}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-slate-400 hover:bg-slate-800/60 hover:text-slate-200 transition-colors text-left"
+                    title={conv.title}
+                  >
+                    <MessageSquare className="h-3.5 w-3.5 shrink-0 text-purple-400/80" />
+                    <span className="truncate flex-1">{conv.title}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Sidebar Footer with Live API Status & User Profile */}

@@ -1,0 +1,17 @@
+{
+  "document_processing_time_ms": 0.54,
+  "chunks_produced": 4,
+  "embedding_batch_time_ms": 234.8,
+  "avg_embedding_per_chunk_ms": 58.7,
+  "embedding_dim": 768,
+  "retrieval_latency_ms": 0.306,
+  "retrieval_candidates_evaluated": 30,
+  "reranking_latency_ms": 0.67,
+  "rerank_candidates_scored": 12,
+  "rerank_top_k": 5,
+  "rerank_model_backend": "cross-attention-engine",
+  "time_to_first_token_ms": 0.74,
+  "total_stream_time_ms": 3.62,
+  "tokens_streamed": 8,
+  "total_answer_generation_ms": 2.01
+}

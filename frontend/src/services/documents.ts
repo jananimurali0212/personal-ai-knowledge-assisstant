@@ -1,8 +1,9 @@
 import { supabase } from './supabase';
-import { DocumentRecord, DocumentStats } from '../types';
+import { DocumentRecord, DocumentStats, DocumentSummaryResponse } from '../types';
 
 export const SUPPORTED_EXTENSIONS = ['.pdf', '.docx', '.txt'];
 export const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 /**
  * Normalizes and extracts file extension from filename.
@@ -248,6 +249,85 @@ export const getDocumentDownloadUrl = async (
     return { url: data.signedUrl, error: null };
   } catch (err: any) {
     return { url: null, error: err.message || 'Failed to generate download URL.' };
+  }
+};
+
+/**
+ * Triggers AI document summarization via POST /api/documents/{documentId}/summarize.
+ */
+export const summarizeDocument = async (
+  documentId: string,
+  userId: string,
+  forceRegenerate: boolean = false,
+  token?: string
+): Promise<{ data: DocumentSummaryResponse | null; error: string | null }> => {
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'X-User-ID': userId,
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/api/documents/${documentId}/summarize`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ force_regenerate: forceRegenerate }),
+    });
+
+    const body = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        error: body?.detail || `Summarization failed with status ${res.status}`,
+      };
+    }
+
+    return { data: body as DocumentSummaryResponse, error: null };
+  } catch (err: any) {
+    return {
+      data: null,
+      error: err?.message || 'Network error occurred while generating document summary.',
+    };
+  }
+};
+
+/**
+ * Retrieves the saved summary for a document without regenerating via GET /api/documents/{documentId}/summary.
+ */
+export const fetchDocumentSummary = async (
+  documentId: string,
+  userId: string,
+  token?: string
+): Promise<{ data: DocumentSummaryResponse | null; error: string | null }> => {
+  try {
+    const headers: Record<string, string> = {
+      'X-User-ID': userId,
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/api/documents/${documentId}/summary`, {
+      method: 'GET',
+      headers,
+    });
+
+    const body = await res.json();
+    if (!res.ok) {
+      return {
+        data: null,
+        error: body?.detail || `Failed to fetch summary (status ${res.status})`,
+      };
+    }
+
+    return { data: body as DocumentSummaryResponse, error: null };
+  } catch (err: any) {
+    return {
+      data: null,
+      error: err?.message || 'Network error occurred while fetching document summary.',
+    };
   }
 };
 
