@@ -259,3 +259,45 @@ def get_document_summary_endpoint(
         cached=True,
         created_at=summary_record.get("created_at"),
     )
+
+
+@router.delete("/{document_id}/summary")
+def delete_document_summary_endpoint(
+    document_id: UUID,
+    x_user_id: Optional[str] = Header(None, description="Authenticated User UUID"),
+    user_id: Optional[str] = None,
+):
+    """
+    Deletes the saved summary for a document and resets its status.
+    Verifies user ownership before deleting.
+    """
+    raw_uid = x_user_id or user_id
+    if not raw_uid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required: Provide X-User-ID header."
+        )
+    try:
+        user_uuid = UUID(raw_uid)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid user ID format."
+        )
+
+    # Fetch document metadata to verify ownership
+    try:
+        default_summarizer_service._get_document_metadata(document_id, user_uuid)
+    except DocumentNotFoundError:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found or unauthorized.",
+        )
+
+    default_summary_repository.delete_summary(document_id, user_uuid)
+
+    return {
+        "status": "success",
+        "message": f"Summary for document {document_id} was successfully deleted.",
+        "document_id": str(document_id),
+    }

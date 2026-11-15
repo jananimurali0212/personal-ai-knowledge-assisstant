@@ -20,6 +20,7 @@ export interface DocumentSummaryContent {
   important_points: string[];
   key_terminology: KeyTerminologyItem[];
   important_conclusions: string[];
+  action_items?: string[];
   total_sections_analyzed: number;
   is_hierarchical: boolean;
   model_used: string;

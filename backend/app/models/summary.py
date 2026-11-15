@@ -40,6 +40,10 @@ class DocumentSummaryContent(BaseModel):
         default_factory=list,
         description="Major conclusions, implications, or final outcomes of the document."
     )
+    action_items: List[str] = Field(
+        default_factory=list,
+        description="Concrete next steps, implementation actions, or operational takeaways."
+    )
     total_sections_analyzed: int = Field(
         default=1,
         description="Number of chunks or chunk sections analyzed in the summarization process."

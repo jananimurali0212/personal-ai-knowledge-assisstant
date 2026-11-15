@@ -70,6 +70,10 @@ REQUIRED JSON SCHEMA:
   "important_conclusions": [
     "Primary conclusion or final outcome 1",
     "Primary conclusion or final outcome 2"
+  ],
+  "action_items": [
+    "Concrete action item or implementation takeaway 1",
+    "Concrete action item or implementation takeaway 2"
   ]
 }
 """
@@ -228,6 +232,7 @@ class DocumentSummarizerService:
             "important_points": [raw_text[:300].strip()],
             "key_terminology": [],
             "important_conclusions": [],
+            "action_items": [],
         }
 
     def _call_gemini_json(self, prompt: str, system_instruction: str) -> Dict[str, Any]:
@@ -397,12 +402,16 @@ class DocumentSummarizerService:
         raw_conclusions = data.get("important_conclusions", [])
         important_conclusions = [str(c).strip() for c in raw_conclusions if c and str(c).strip()]
 
+        raw_actions = data.get("action_items", [])
+        action_items = [str(a).strip() for a in raw_actions if a and str(a).strip()]
+
         return DocumentSummaryContent(
             executive_summary=exec_summary,
             main_topics=main_topics,
             important_points=important_points,
             key_terminology=key_terminology,
             important_conclusions=important_conclusions,
+            action_items=action_items,
             total_sections_analyzed=total_sections,
             is_hierarchical=is_hierarchical,
             model_used=self.model,

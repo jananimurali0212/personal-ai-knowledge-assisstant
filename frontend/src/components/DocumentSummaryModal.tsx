@@ -13,6 +13,7 @@ import {
   Bookmark,
   Layers,
   Cpu,
+  ListTodo,
 } from 'lucide-react';
 import { DocumentRecord, DocumentSummaryResponse, DocumentSummaryContent } from '../types';
 
@@ -62,6 +63,9 @@ export const DocumentSummaryModal: React.FC<DocumentSummaryModalProps> = ({
       '',
       '## Important Conclusions',
       ...summary.important_conclusions.map((c) => `- ${c}`),
+      ...(summary.action_items && summary.action_items.length > 0
+        ? ['', '## Action Items', ...summary.action_items.map((a) => `- [ ] ${a}`)]
+        : []),
     ];
 
     navigator.clipboard.writeText(sections.join('\n'));
@@ -241,6 +245,24 @@ export const DocumentSummaryModal: React.FC<DocumentSummaryModalProps> = ({
                       <div key={i} className="flex items-start gap-2 text-xs text-purple-200">
                         <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-purple-400" />
                         <span className="leading-relaxed">{conc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 6. Action Items */}
+              {summary.action_items && summary.action_items.length > 0 && (
+                <div className="space-y-2.5">
+                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
+                    <ListTodo className="h-4 w-4 text-cyan-400" />
+                    <span>Action Items & Next Steps</span>
+                  </div>
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-950/20 p-4 space-y-2">
+                    {summary.action_items.map((act, i) => (
+                      <div key={i} className="flex items-start gap-2 text-xs text-cyan-200">
+                        <span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-400" />
+                        <span className="leading-relaxed">{act}</span>
                       </div>
                     ))}
                   </div>

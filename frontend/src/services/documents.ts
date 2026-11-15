@@ -331,3 +331,41 @@ export const fetchDocumentSummary = async (
   }
 };
 
+/**
+ * Deletes the saved summary for a document via DELETE /api/documents/{documentId}/summary.
+ */
+export const deleteDocumentSummary = async (
+  documentId: string,
+  userId: string,
+  token?: string
+): Promise<{ success: boolean; error: string | null }> => {
+  try {
+    const headers: Record<string, string> = {
+      'X-User-ID': userId,
+    };
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/api/documents/${documentId}/summary`, {
+      method: 'DELETE',
+      headers,
+    });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      return {
+        success: false,
+        error: body?.detail || `Failed to delete summary (status ${res.status})`,
+      };
+    }
+
+    return { success: true, error: null };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || 'Network error occurred while deleting document summary.',
+    };
+  }
+};
+

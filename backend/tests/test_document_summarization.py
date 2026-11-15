@@ -44,6 +44,7 @@ from app.services.processor import (
 from app.routes.documents import (
     summarize_document_endpoint,
     get_document_summary_endpoint,
+    delete_document_summary_endpoint,
 )
 
 
@@ -464,3 +465,81 @@ def test_api_get_summary_endpoint_not_found():
             x_user_id=str(user_id),
         )
     assert exc_info.value.status_code == 404
+
+
+def test_api_delete_summary_endpoint_success(mock_gemini_single_pass_json):
+    """Verifies DELETE /api/documents/{id}/summary deletes summary and resets state."""
+    user_id = uuid4()
+    doc_id = uuid4()
+
+    update_document_status(
+        document_id=doc_id,
+        user_id=user_id,
+        status="ready",
+        extra={"file_name": "delete_test.pdf", "file_type": "pdf"},
+    )
+    _in_memory_chunks_store[f"{user_id}:{doc_id}"] = [
+        {"chunk_index": 0, "page_number": 1, "content": "Text for deletion testing."}
+    ]
+
+    # First summarize
+    with patch("app.routes.documents.default_summarizer_service._call_gemini_json", return_value=mock_gemini_single_pass_json):
+        summarize_document_endpoint(
+            document_id=doc_id,
+            request=DocumentSummaryRequest(),
+            x_user_id=str(user_id),
+        )
+
+    # Verify summary exists
+    get_res = get_document_summary_endpoint(document_id=doc_id, x_user_id=str(user_id))
+    assert get_res.summary is not None
+
+    # Delete summary
+    del_res = delete_document_summary_endpoint(document_id=doc_id, x_user_id=str(user_id))
+    assert del_res["status"] == "success"
+
+    # Now GET should 404
+    with pytest.raises(HTTPException) as exc_info:
+        get_document_summary_endpoint(document_id=doc_id, x_user_id=str(user_id))
+    assert exc_info.value.status_code == 404
+
+
+def test_summary_action_items_parsed(chunk_repo, summary_repo):
+    """Verifies that action items are correctly parsed and stored in the structured summary."""
+    user_id = uuid4()
+    doc_id = uuid4()
+
+    mock_json = {
+        "executive_summary": "Summary with action items.",
+        "main_topics": ["Action Item Protocol"],
+        "important_points": ["Points here."],
+        "key_terminology": [{"term": "Action", "definition": "A task to complete."}],
+        "important_conclusions": ["Finished."],
+        "action_items": [
+            "Implement automated regression testing suite.",
+            "Deploy staging canary before production cutover.",
+        ],
+    }
+
+    _in_memory_chunks_store[f"{user_id}:{doc_id}"] = [
+        {"chunk_index": 0, "page_number": 1, "content": "Document with operational recommendations."}
+    ]
+    update_document_status(
+        document_id=doc_id,
+        user_id=user_id,
+        status="ready",
+        extra={"file_name": "actions.pdf", "file_type": "pdf"},
+    )
+
+    service = DocumentSummarizerService(
+        api_key="test_key",
+        chunk_repository=chunk_repo,
+        summary_repository=summary_repo,
+    )
+
+    with patch.object(service, "_call_gemini_json", return_value=mock_json):
+        resp = service.summarize_document(doc_id, user_id)
+        assert resp.summary is not None
+        assert len(resp.summary.action_items) == 2
+        assert resp.summary.action_items[0] == "Implement automated regression testing suite."
+        assert resp.summary.action_items[1] == "Deploy staging canary before production cutover."

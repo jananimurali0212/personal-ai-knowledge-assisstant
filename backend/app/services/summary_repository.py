@@ -115,6 +115,7 @@ class SummaryRepository:
             "important_points": summary_data.get("important_points", []),
             "key_terminology": summary_data.get("key_terminology", []),
             "important_conclusions": summary_data.get("important_conclusions", []),
+            "action_items": summary_data.get("action_items", []),
             "summary_status": "completed",
             "model_used": summary_data.get("model_used", "gemini-2.5-flash"),
             "tokens_used": summary_data.get("tokens_used", 0),
@@ -189,6 +190,45 @@ class SummaryRepository:
                 client.patch(endpoint, json=payload, headers=headers)
         except Exception as e:
             logger.debug(f"Failed to sync summary status to Supabase: {e}")
+
+    def delete_summary(self, document_id: UUID, user_id: UUID) -> bool:
+        """
+        Deletes the summary for a document from storage and cache,
+        and resets document summary_status to 'not_generated'.
+        """
+        doc_key = f"{user_id}:{document_id}"
+        _in_memory_summary_store.pop(doc_key, None)
+
+        if not self.is_configured():
+            logger.info(f"Deleted summary in-memory for document {document_id}")
+            return True
+
+        try:
+            headers = {
+                "apikey": self.supabase_key,
+                "Authorization": f"Bearer {self.supabase_key}",
+                "Content-Type": "application/json",
+            }
+
+            # 1. Delete from document_summaries
+            endpoint = f"{self.supabase_url}/rest/v1/document_summaries?document_id=eq.{document_id}&user_id=eq.{user_id}"
+            with httpx.Client(timeout=10.0) as client:
+                client.delete(endpoint, headers=headers)
+
+            # 2. Reset on documents table
+            doc_endpoint = f"{self.supabase_url}/rest/v1/documents?id=eq.{document_id}&user_id=eq.{user_id}"
+            doc_payload = {
+                "summary": None,
+                "summary_status": "not_generated",
+                "summarized_at": None,
+            }
+            with httpx.Client(timeout=10.0) as client:
+                client.patch(doc_endpoint, json=doc_payload, headers=headers)
+
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete summary from Supabase for document {document_id}: {e}")
+            return True
 
 
 default_summary_repository = SummaryRepository()
