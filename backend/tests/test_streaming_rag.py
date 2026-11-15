@@ -372,3 +372,163 @@ def test_chat_stream_endpoint_returns_streaming_response(sample_sources):
     assert resp.media_type == "text/event-stream"
     assert resp.headers["Cache-Control"] == "no-cache"
     assert resp.headers["Connection"] == "keep-alive"
+
+
+# ---------------------------------------------------------------------------
+# 5. Multi-Document & Contextual Follow-Up Streaming Tests
+# ---------------------------------------------------------------------------
+
+def test_ask_stream_multi_document_sources(in_memory_repo):
+    """Verifies streaming handles and yields citations from multiple distinct documents."""
+    doc_a_id = uuid4()
+    doc_b_id = uuid4()
+    multi_sources = [
+        SearchResultItem(
+            chunk_id=uuid4(),
+            document_id=doc_a_id,
+            document_name="Java_Inheritance.pdf",
+            chunk_index=0,
+            content="Inheritance allows subclasses to acquire properties.",
+            similarity=0.91,
+            page_number=3,
+        ),
+        SearchResultItem(
+            chunk_id=uuid4(),
+            document_id=doc_b_id,
+            document_name="Java_Polymorphism.docx",
+            chunk_index=0,
+            content="Polymorphism enables dynamic method dispatch.",
+            similarity=0.88,
+            page_number=1,
+        ),
+    ]
+
+    mock_search = MagicMock()
+    mock_search.search.return_value = SemanticSearchResponse(
+        query="How are inheritance and polymorphism related in Java?",
+        total_results=2,
+        match_threshold=0.3,
+        embedding_model="text-embedding-004",
+        results=multi_sources,
+    )
+
+    mock_gen = MagicMock()
+    def fake_stream(*args, **kwargs):
+        yield "Inheritance provides the hierarchy [Source 1], "
+        yield "while polymorphism allows dynamic dispatch [Source 2]."
+
+    mock_gen.generate_answer_stream = fake_stream
+    mock_gen.validate_and_sanitize_citations.return_value = (
+        "Inheritance provides the hierarchy [Source 1], while polymorphism allows dynamic dispatch [Source 2].",
+        ["Source 1", "Source 2"],
+    )
+
+    rag = RAGOrchestratorService(
+        search_service=mock_search,
+        generation_service=mock_gen,
+        conversation_repository=in_memory_repo,
+    )
+
+    user_id = uuid4()
+    req = ChatAskRequest(question="How are inheritance and polymorphism related in Java?")
+    events = list(rag.ask_stream(req, user_id=user_id))
+
+    parsed = []
+    for raw in events:
+        lines = [l for l in raw.strip().split("\n") if l]
+        event_name = lines[0].replace("event: ", "").strip()
+        data = json.loads(lines[1].replace("data: ", "").strip())
+        parsed.append((event_name, data))
+
+    sources_event = [e[1] for e in parsed if e[0] == "sources"][0]
+    assert len(sources_event["sources"]) == 2
+    assert "Java_Inheritance.pdf" in sources_event["document_names"]
+    assert "Java_Polymorphism.docx" in sources_event["document_names"]
+    assert 3 in sources_event["page_numbers"]
+
+
+def test_ask_stream_contextual_followup_question(in_memory_repo):
+    """Verifies that follow-up questions resolve conversational context using history."""
+    user_id = uuid4()
+
+    # Pre-seed a conversation
+    conv = in_memory_repo.create_conversation(user_id=user_id, title="Polymorphism Discussion")
+    conv_id = conv.id if hasattr(conv, "id") else uuid4()
+
+    in_memory_repo.add_message(
+        conversation_id=conv_id,
+        user_id=user_id,
+        role="user",
+        content="What is runtime polymorphism in Java?",
+    )
+    in_memory_repo.add_message(
+        conversation_id=conv_id,
+        user_id=user_id,
+        role="assistant",
+        content="Runtime polymorphism is achieved through method overriding.",
+    )
+
+    mock_search = MagicMock()
+    mock_search.search.return_value = SemanticSearchResponse(
+        query="What is runtime polymorphism in Java? Give me an example",
+        total_results=1,
+        match_threshold=0.3,
+        embedding_model="text-embedding-004",
+        results=[
+            SearchResultItem(
+                chunk_id=uuid4(),
+                document_id=uuid4(),
+                document_name="Polymorphism_Guide.pdf",
+                chunk_index=1,
+                content="Example: Animal a = new Dog(); a.makeSound();",
+                similarity=0.95,
+                page_number=5,
+            )
+        ],
+    )
+
+    mock_gen = MagicMock()
+    def fake_stream(*args, **kwargs):
+        # Verify history was passed to Gemini prompt
+        assert "history" in kwargs
+        assert len(kwargs["history"]) >= 2
+        yield "Here is an example: Animal a = new Dog(); [Source 1]"
+
+    mock_gen.generate_answer_stream = fake_stream
+    mock_gen.validate_and_sanitize_citations.return_value = (
+        "Here is an example: Animal a = new Dog(); [Source 1]",
+        ["Source 1"],
+    )
+
+    rag = RAGOrchestratorService(
+        search_service=mock_search,
+        generation_service=mock_gen,
+        conversation_repository=in_memory_repo,
+    )
+
+    # Follow-up question: "Give me an example."
+    req = ChatAskRequest(
+        question="Give me an example.",
+        conversation_id=conv_id,
+    )
+
+    events = list(rag.ask_stream(req, user_id=user_id))
+
+    parsed = []
+    for raw in events:
+        lines = [l for l in raw.strip().split("\n") if l]
+        event_name = lines[0].replace("event: ", "").strip()
+        data = json.loads(lines[1].replace("data: ", "").strip())
+        parsed.append((event_name, data))
+
+    event_types = [e[0] for e in parsed]
+    assert "start" in event_types
+    assert "token" in event_types
+    assert "sources" in event_types
+    assert "complete" in event_types
+
+    # Ensure search was performed with expanded context
+    call_args = mock_search.search.call_args[1]
+    search_req = call_args["request"]
+    assert "runtime polymorphism" in search_req.query.lower()
+
